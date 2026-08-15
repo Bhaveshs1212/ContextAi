@@ -47,8 +47,6 @@ class CustomDocumentLoader(BaseLoader):
             yield Document(
                 page_content=file_,
             )
-        
-        yield Document(page_content="")
 
 async def split_text(documents, chunk_size=1000, chunk_overlap=500, length_function=len, add_start_index=True):
     """

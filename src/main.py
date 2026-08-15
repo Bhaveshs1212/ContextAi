@@ -1,10 +1,11 @@
 import streamlit as st
 from langchain_core.prompts import ChatPromptTemplate
-from agents.agent import rag_agent_executor, memory
+from agents.agent import rag_agent
 import datetime
 import asyncio
 from streamlit import dialog as st_dialog
 import time
+import uuid
 
 # Enable detailed error messages in the Streamlit client console
 st.set_option("client.showErrorDetails", True)
@@ -36,6 +37,8 @@ def main():
     # Initialize session history for messages if it doesn't exist
     if "messages" not in st.session_state:
         st.session_state.messages = []
+    if "thread_id" not in st.session_state:
+        st.session_state.thread_id = str(uuid.uuid4())
 
     # Display previous chat messages (excluding system messages)
     for message in st.session_state.messages:
@@ -58,14 +61,20 @@ def main():
                     formatted_now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     query = prompt_template.format(current_time=formatted_now, question=prompt)
 
-                    # Invoke the agent asynchronously using version "v2"
-                    start=time.time();
-                    response = rag_agent_executor.invoke({"input": query}, version="v2")
-                    total_time=round(time.time()-start);
-                    output_text = f"*Thought for {total_time} seconds*\n\n"+response["output"]
+                    # Invoke the agent asynchronously
+                    start = time.time()
+                    response = asyncio.run(
+                        rag_agent.ainvoke(
+                            {"messages": [{"role": "user", "content": query}]},
+                            config={"configurable": {"thread_id": st.session_state.thread_id}},
+                        )
+                    )
+                    total_time = round(time.time() - start)
+                    output_text = f"*Thought for {total_time} seconds*\n\n" + response["messages"][-1].text
+
                 except Exception as e:
                     # On error, use fallback mechanism and set output_text to the error
-                    output_text = e
+                    output_text = str(e)
                     error_fallback(e)
 
             # Display the assistant's response and save it to session history

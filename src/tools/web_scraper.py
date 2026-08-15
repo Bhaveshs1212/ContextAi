@@ -1,4 +1,4 @@
-from langchain_community.tools import DuckDuckGoSearchResults
+from ddgs import DDGS
 from langchain_core.tools import tool
 import trafilatura
 from tools.preprocess import CustomDocumentLoader, split_text
@@ -13,16 +13,13 @@ def cached_fetch_content(url: str) -> str:
     processes it with a custom document loader, splits it into chunks,
     and saves embeddings. The results are cached for repeated queries.
     """
-    i=0
-    content = trafilatura.fetch_url(url)
-    # content=trafilatura.extract(content,output_format="json",favor_precision=True, favor_recall=True)
-    content=trafilatura.extract(content,favor_precision=True, favor_recall=True)
-    while content==None and i<5:
+    try:
         content = trafilatura.fetch_url(url)
-        content=trafilatura.extract(content,favor_precision=True, favor_recall=True)
-        i+=1
-
-    return content 
+        if content:
+            return trafilatura.extract(content, favor_recall=True)
+    except Exception:
+        pass
+    return None
 
 @lru_cache(maxsize=128)
 def cached_search_content(query: str, source: str) -> list:
@@ -30,14 +27,34 @@ def cached_search_content(query: str, source: str) -> list:
     Performs a DuckDuckGo search query for the specified source (text or news)
     and caches the raw result list.
     """
-    search = DuckDuckGoSearchResults(output_format="list", source=source)
-    ret = search.invoke(query, backend=source)
-    return ret
+    clean_q = str(query).strip().strip("`'\"\n\r\t ")
+    results = []
+    try:
+        with DDGS() as ddgs:
+            if source == "news":
+                items = list(ddgs.news(clean_q, max_results=6))
+                for item in items:
+                    results.append({
+                        "title": item.get("title", ""),
+                        "link": item.get("url", ""),
+                        "snippet": item.get("body", "")
+                    })
+            else:
+                items = list(ddgs.text(clean_q, max_results=6))
+                for item in items:
+                    results.append({
+                        "title": item.get("title", ""),
+                        "link": item.get("href", ""),
+                        "snippet": item.get("body", "")
+                    })
+    except Exception as e:
+        print(f"ddgs search error: {e}")
+    return results
 
 @tool("Search",parse_docstring=True)
 async def fetch_sites(query : str) -> str:
     """
-    Performs a web search based on the provided query.
+    A search engine optimized for comprehensive, accurate, and trusted results. Useful for when you need to answer questions about current events. This returns only the answer - not the original source data.
 
     Args:
         query (str): The search term or question to query.
@@ -45,18 +62,19 @@ async def fetch_sites(query : str) -> str:
     Returns:
         str: The result or answer retrieved from the web search, excluding the source.
     """
+    clean_q = str(query).strip().strip("`'\"\n\r\t ")
+
     # Web search
-    web_search_task = asyncio.create_task(asyncio.to_thread(lambda: cached_search_content(query, "text")))
+    web_search_task = asyncio.create_task(asyncio.to_thread(lambda: cached_search_content(clean_q, "text")))
 
     # News search
-    news_search_task = asyncio.create_task(asyncio.to_thread(lambda: cached_search_content(query, "news")))
+    news_search_task = asyncio.create_task(asyncio.to_thread(lambda: cached_search_content(clean_q, "news")))
 
     web_ret, news_ret = await asyncio.gather(web_search_task, news_search_task)
 
-    # Combine results and eliminating duplicate web results
+    # Combine results and eliminate duplicate web results
     unique_results = {}
-    for item in web_ret + news_ret:
-        # Using link as a unique identifier
+    for item in (news_ret + web_ret):
         if item.get('link') and item['link'] not in unique_results:
             unique_results[item['link']] = item
     
@@ -66,54 +84,51 @@ async def fetch_sites(query : str) -> str:
     top_k=8
     content=""
     # Create tasks for text search results
-    web_tasks = [visit.ainvoke({"query": row}) for row in ret[:top_k]]
+    web_tasks = [visit.ainvoke({"query": row.get("link", "")}) for row in ret[:top_k]]
     web_results = await asyncio.gather(*web_tasks)
     
     for i, row in enumerate(ret[:top_k]):
-        row["content"] = web_results[i]
-        if row["content"] is not None:
-            content = content + '\n\nTitle:' + row['title'] + '\n\nLink:'+row['link']
-            content = content + '\n\nContent:' + row["content"]
+        scraped = web_results[i] if i < len(web_results) else None
+        row_content = scraped if (scraped and scraped != "No content could be extracted from the webpage.") else row.get("snippet")
+        row["content"] = row_content
+        if row_content:
+            content = content + '\n\nTitle: ' + row.get('title', '') + '\nLink: ' + row.get('link', '')
+            content = content + '\nContent: ' + str(row_content)
         fetched.append(row)
-
-    # # Create tasks for news search results
-    # news_tasks = [visit.ainvoke({"query": row}) for row in ret[:top_k]]
-    # news_results = await asyncio.gather(*news_tasks)
-    
-    # for i, row in enumerate(ret[:top_k]):
-    #     row["content"] = news_results[i]
-    #     if row["content"] is not None:
-    #         content = content + '\n\nTitle:' + row['title'] + '\n\nLink:'+row['link']
-    #         content = content + '\n\nContent:' + row["content"]
-    #     fetched.append(row)
 
     return str(content+'\n\n')
 
 @tool("OpenLink",parse_docstring=True)
-async def visit(query : dict) -> str:
+async def visit(query: str) -> str:
     """
-    Extracts content from a webpage given a URL.
+    Extracts webpage content from URL. Input: string URL. Returns: extracted text content
 
     Args:
-        query (dict): A dictionary containing the key "link" with the URL of the webpage to extract content from.
+        query (str): URL string or dictionary containing the key "link" with the URL of the webpage to extract content from.
 
     Returns:
         str: The extracted content from the webpage, excluding the source or metadata.
     """
-    query["content"]=cached_fetch_content(query["link"])
-    if query["content"] is None:
+    if isinstance(query, str):
+
+        url = query.strip().strip("`'\"\n\r\t ")
+        query_dict = {"link": url}
+    elif isinstance(query, dict):
+        url = query.get("link", "")
+        query_dict = query
+    else:
+        url = str(query)
+        query_dict = {"link": url}
+
+    content = cached_fetch_content(url)
+    query_dict["content"] = content
+    if content is None:
         return "No content could be extracted from the webpage."
 
     # Process the document and save embeddings
-    await process_and_save(query)
+    await process_and_save(query_dict)
+    return content or "No content could be extracted from the webpage."
 
-    # loader = CustomDocumentLoader(query)
-    # documents=[]
-    # async for doc in loader.lazy_load():
-    #     documents.append(doc)
-    # chunks = await split_text(documents, 2048, 512)
-    # await save_embeddings(chunks)
-    return query["content"]
 
 async def process_and_save(query):
     """

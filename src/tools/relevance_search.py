@@ -9,8 +9,8 @@ def generate_content_hash(content: str) -> str:
 @tool("DBSearch",parse_docstring=True)
 async def fetch_information(query: str, top_k: int=6): 
     """
-    Search the database for relevant documents and return unique results by filtering out duplicates.
-    
+    Search database for relevant documents. Contents of websearches are cached in the database, so that they could be accessed through this tool
+
     Args:
         query (str): The search query text to find relevant documents.
         top_k (int): The maximum number of documents to return.
