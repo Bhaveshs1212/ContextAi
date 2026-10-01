@@ -1,11 +1,11 @@
-# LinkMind
+# ContextAi
 ![demo](assets/demo.gif?raw=true)
 
-LinkMind is an interactive conversation application powered by a modern Langchain-based agent that integrates natural language processing, web search, document scraping, and vector search. Built using Streamlit for its user interface, LinkMind leverages the Hugging Face endpoint along with a custom FAISS vector store to deliver context-rich, intelligent responses.
+ContextAi is an interactive conversation application powered by a modern Langchain-based agent that integrates natural language processing, web search, document scraping, and vector search. Built using Streamlit for its user interface, ContextAi leverages the Hugging Face endpoint along with a custom FAISS vector store to deliver context-rich, intelligent responses.
 
 ## Overview
 
-LinkMind is designed to:
+ContextAi is designed to:
 - Answer user questions in detail while explaining the reasoning process.
 - Utilize a reactive chat agent powered by a chain-of-thought prompt based on React.
 - Seamlessly integrate with web search and content extraction tools.
@@ -26,7 +26,7 @@ LinkMind is designed to:
 
 ## Architecture
 
-The architecture of LinkMind combines LangChain’s modular framework with Streamlit’s client-server model. Below is an architectural diagram showcasing the inner working of the agent:
+The architecture of ContextAi combines LangChain’s modular framework with Streamlit’s client-server model. Below is an architectural diagram showcasing the inner working of the agent:
 
 ![Architecture of the Agent](assets/architecture.png)
 
@@ -35,8 +35,8 @@ The architecture of LinkMind combines LangChain’s modular framework with Strea
 1. **Clone the Repository:**
 
    ```
-   git clone https://github.com/cricsion/LinkMind.git
-   cd LinkMind
+   git clone https://github.com/cricsion/ContextAi.git
+   cd ContextAi
    ```
 
 2. **Create and Activate a Virtual Environment:**
@@ -80,7 +80,7 @@ The architecture of LinkMind combines LangChain’s modular framework with Strea
    streamlit run src/main.py
    ```
 
-2. **Chat with LinkMind:**
+2. **Chat with ContextAi:**
 
    - Upon launching, you will find an interactive chat input.
    - Enter a query and watch as the agent uses its integrated tools (web search, document extraction, and vector search) to formulate its answer.
